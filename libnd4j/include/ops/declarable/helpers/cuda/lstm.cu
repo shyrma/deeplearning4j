@@ -108,7 +108,7 @@ void lstmCell(nd4j::LaunchContext * context, const NDArray* xt, const NDArray* h
 
 void lstmBlockCell(const NDArray* xt, const NDArray* cLast, const NDArray* yLast,
                    const NDArray* W, const NDArray* Wci, const NDArray* Wcf, const NDArray* Wco, const NDArray* b,
-                   NDArray* i, NDArray* c, NDArray* f, NDArray* o, NDArray* z, NDArray* h, NDArray* y, const std::vector<double>& params) {
+                   NDArray* i, NDArray* c, NDArray* f, NDArray* o, NDArray* ci, NDArray* co, NDArray* h, const std::vector<double>& params) {
     /* Input arrays:
     *    0: xt              - input [bS, nIn] at time t
     *    1: cLast (cs_prev) - previous cell state  [bS, nOut], time t-1
@@ -131,9 +131,9 @@ void lstmBlockCell(const NDArray* xt, const NDArray* cLast, const NDArray* yLast
     *    1: c (cs) - Cell state (pre tanh) [bs, nOut] (cs)
     *    2: f      - Output - forget gate activations [bs, nOut]
     *    3: o      - Output - output gate activations [bs, nOut]
-    *    4: z (ci) - Output - block input [bs, nOut]
-    *    5: h (co) - Cell state, post tanh [bs, nOut]
-    *    6: y (h)  - Current cell output [bS, nOut], time t
+    *    4: ci (z) - Output - block input [bs, nOut]
+    *    5: co (h) - Cell state, post tanh [bs, nOut]
+    *    6: h  (y) - Current cell output [bS, nOut], time t
     */
     const bool peephole            = (bool)params[0];        // if true, provide peephole connections
     const double forgetBias        = params[1];
@@ -152,11 +152,11 @@ void lstmBlockCell(const NDArray* xt, const NDArray* cLast, const NDArray* yLast
 
     //Note: weights are ordered [inputGate, blockInput, forgetGate, outputGate] to match TF (TF code comments state [i,f,z/ci,o] but behaviour is [i,z,f,o])
     auto zi = m({0,0, 0,        nOut});      	// z for input modulation gate, [bS, nOut]
-    auto zz = m({0,0, nOut,   2*nOut});         // z for block input, [bS, nOut]
+    auto zc = m({0,0, nOut,   2*nOut});         // z for block input, [bS, nOut]
     auto zf = m({0,0, 2*nOut, 3*nOut});      	// z for forget gate, [bS, nOut]
     auto zo = m({0,0, 3*nOut, 4*nOut});      	// z for output gate, [bS, nOut]
 
-    if(peephole) {                                              // add peephole connections: z  +  ct_1*Wc
+    if(peephole) {                                              // add peephole connections: i/f  +  ct_1*Wc
         zi += (*cLast) * (*Wci);       // add peephole connections to input gate
         zf += (*cLast) * (*Wcf);       // add peephole connections to forget gate
     }
@@ -165,15 +165,15 @@ void lstmBlockCell(const NDArray* xt, const NDArray* cLast, const NDArray* yLast
     if(forgetBias != 0.0)
         zf += forgetBias;
 
-    zz.applyTransform(transform::Tanh, z);      //z = tanh(zz)
+    zc.applyTransform(transform::Tanh, ci);      //ci = tanh(zc)
     zi.applyTransform(transform::Sigmoid, i);   //i = sigmoid(zi)
     zf.applyTransform(transform::Sigmoid, f);   //f = sigmoid(zf);
 
     //cell state = blockInput .* inputGate + prevCellState .* forgetGate
-    z->applyPairwiseTransform(pairwise::Multiply, i, c, nullptr);       //c = z * i
+    ci->applyPairwiseTransform(pairwise::Multiply, i, c, nullptr);       //c = ci * i
     auto temp = (*f) * (*cLast);
-    *c += temp;                              //c = (i * z) + (zf * (*cLast))
-    c->applyTransform(transform::Tanh, h);  //h = tanh(c)
+    *c += temp;                              //c = (i * ci) + (zf * (*cLast))
+    c->applyTransform(transform::Tanh, co);  //co = tanh(c)
 
     // if clipping value is provided then cell state is clipped by this value prior to the cell output activation
     if(clippingCellValue > 0.0)
@@ -187,8 +187,8 @@ void lstmBlockCell(const NDArray* xt, const NDArray* cLast, const NDArray* yLast
     zo.applyTransform(transform::Sigmoid, o);   // o = sigmoid(zo)
 
     // current cell output = ot*tanh(ct)
-    c->applyTransform(transform::Tanh, h);  //h = tanh(c)
-    o->applyPairwiseTransform(pairwise::Multiply, h, y, nullptr);   //y = o * h
+    c->applyTransform(transform::Tanh, co);  //co = tanh(c)
+    o->applyPairwiseTransform(pairwise::Multiply, co, h, nullptr);   //h = o * co
 }
 
 
