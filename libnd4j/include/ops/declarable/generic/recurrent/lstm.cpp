@@ -15,7 +15,7 @@
  ******************************************************************************/
 
 //
-// @author Yurii Shyrma, created on 15.02.2018
+// @author Yurii Shyrma (iuriish@yahoo.com)
 //
 
 #include <op_boilerplate.h>
@@ -39,10 +39,10 @@ CUSTOM_OP_IMPL(lstm, 8, 2, false, 3, 2) {
     auto Wc  = INPUT_VARIABLE(5);                   // diagonal weights for peephole connections [3*numUnits]
     auto Wp  = INPUT_VARIABLE(6);                   // projection weights [numUnits x numProj]
     auto b   = INPUT_VARIABLE(7);                   // biases, [4*numUnits]
-    
+
     auto h   =  OUTPUT_VARIABLE(0);                 // cell outputs [time x bS x numProj], that is per each time step
     auto c   =  OUTPUT_VARIABLE(1);                 // cell states  [time x bS x numUnits] that is per each time step
-    
+
     const int peephole   = INT_ARG(0);                     // if 1, provide peephole connections
     const int projection = INT_ARG(1);                     // if 1, then projection is performed, if false then numProj==numUnits is mandatory!!!!
 
@@ -81,7 +81,7 @@ CUSTOM_OP_IMPL(lstm, 8, 2, false, 3, 2) {
     REQUIRE_TRUE(correctWcShape == WcShape, 0, "LSTM operation: wrong shape of diagonal weights for peephole connections, expected is %s, but got %s instead !", correctWcShape.c_str(), WcShape.c_str());
     REQUIRE_TRUE(correctWpShape == WpShape, 0, "LSTM operation: wrong shape of projection weights, expected is %s, but got %s instead !", correctWpShape.c_str(), WpShape.c_str());
     REQUIRE_TRUE(correctBShape  == bShape,  0, "LSTM operation: wrong shape of biases, expected is %s, but got %s instead !", correctBShape.c_str(), bShape.c_str());
-    REQUIRE_TRUE(!(!projection && numUnits != numProj), 0, "LSTM operation: projection option is switched of, and in this case output dimensionality for the projection matrices (numProj) must be equal to number of units in lstmCell !");
+    REQUIRE_TRUE(!(!projection && numUnits != numProj), 0, "LSTM operation: projection option is switched off, and in this case output dimensionality for the projection matrices (numProj) must be equal to number of units in lstmCell !");
 
     helpers::lstmTimeLoop(block.launchContext(), x, h0, c0, Wx, Wh, Wc, Wp, b, h, c, {(double)peephole, (double)projection, clippingCellValue, clippingProjValue, forgetBias});
 
@@ -95,7 +95,7 @@ CUSTOM_OP_IMPL(lstm, 8, 2, false, 3, 2) {
         }
 
 
-DECLARE_SHAPE_FN(lstm) {    
+DECLARE_SHAPE_FN(lstm) {
 
     auto xShapeInfo  = inputShape->at(0);                    // input [time x bS x inSize]
     auto h0ShapeInfo = inputShape->at(1);                    // initial cell output (at time step = 0) [bS x numProj], in case of projection=false -> numProj == numUnits !!!
@@ -113,7 +113,7 @@ DECLARE_SHAPE_FN(lstm) {
     const int inSize   = xShapeInfo[3];
     const int numProj  = h0ShapeInfo[2];
     const int numUnits = c0ShapeInfo[2];
- 
+
     // input shapes validation
     const std::string h0Shape        = ShapeUtils::shapeAsString(h0ShapeInfo);
     const std::string correctH0Shape = ShapeUtils::shapeAsString({bS, numProj});
@@ -130,20 +130,20 @@ DECLARE_SHAPE_FN(lstm) {
     const std::string bShape         = ShapeUtils::shapeAsString(bShapeInfo);
     const std::string correctBShape  = ShapeUtils::shapeAsString({4*numUnits});
 
-    REQUIRE_TRUE(correctH0Shape == h0Shape, 0, "LSTM operation: wrong shape of initial cell output, expected is %s, but got %s instead !", correctH0Shape.c_str(), h0Shape.c_str()); 
-    REQUIRE_TRUE(correctC0Shape == c0Shape, 0, "LSTM operation: wrong shape of initial cell state,  expected is %s, but got %s instead !", correctC0Shape.c_str(), c0Shape.c_str()); 
-    REQUIRE_TRUE(correctWxShape == WxShape, 0, "LSTM operation: wrong shape of input-to-hidden weights, expected is %s, but got %s instead !", correctWxShape.c_str(), WxShape.c_str()); 
-    REQUIRE_TRUE(correctWhShape == WhShape, 0, "LSTM operation: wrong shape of hidden-to-hidden weights, expected is %s, but got %s instead !", correctWhShape.c_str(), WhShape.c_str()); 
-    REQUIRE_TRUE(correctWcShape == WcShape, 0, "LSTM operation: wrong shape of diagonal weights for peephole connections, expected is %s, but got %s instead !", correctWcShape.c_str(), WcShape.c_str()); 
-    REQUIRE_TRUE(correctWpShape == WpShape, 0, "LSTM operation: wrong shape of projection weights, expected is %s, but got %s instead !", correctWpShape.c_str(), WpShape.c_str()); 
-    REQUIRE_TRUE(correctBShape  == bShape,  0, "LSTM operation: wrong shape of biases, expected is %s, but got %s instead !", correctBShape.c_str(), bShape.c_str());     
+    REQUIRE_TRUE(correctH0Shape == h0Shape, 0, "LSTM operation: wrong shape of initial cell output, expected is %s, but got %s instead !", correctH0Shape.c_str(), h0Shape.c_str());
+    REQUIRE_TRUE(correctC0Shape == c0Shape, 0, "LSTM operation: wrong shape of initial cell state,  expected is %s, but got %s instead !", correctC0Shape.c_str(), c0Shape.c_str());
+    REQUIRE_TRUE(correctWxShape == WxShape, 0, "LSTM operation: wrong shape of input-to-hidden weights, expected is %s, but got %s instead !", correctWxShape.c_str(), WxShape.c_str());
+    REQUIRE_TRUE(correctWhShape == WhShape, 0, "LSTM operation: wrong shape of hidden-to-hidden weights, expected is %s, but got %s instead !", correctWhShape.c_str(), WhShape.c_str());
+    REQUIRE_TRUE(correctWcShape == WcShape, 0, "LSTM operation: wrong shape of diagonal weights for peephole connections, expected is %s, but got %s instead !", correctWcShape.c_str(), WcShape.c_str());
+    REQUIRE_TRUE(correctWpShape == WpShape, 0, "LSTM operation: wrong shape of projection weights, expected is %s, but got %s instead !", correctWpShape.c_str(), WpShape.c_str());
+    REQUIRE_TRUE(correctBShape  == bShape,  0, "LSTM operation: wrong shape of biases, expected is %s, but got %s instead !", correctBShape.c_str(), bShape.c_str());
 
-    
+
     // evaluate output shapeInfos
     Nd4jLong *hShapeInfo(nullptr), *cShapeInfo(nullptr);
     ALLOCATE(hShapeInfo, block.getWorkspace(), shape::shapeInfoLength(rank), Nd4jLong);      // [time x bS x numProj]
     ALLOCATE(cShapeInfo, block.getWorkspace(), shape::shapeInfoLength(rank), Nd4jLong);      // [time x bS x numUnits]
-            
+
     hShapeInfo[0] = cShapeInfo[0] = rank;
     hShapeInfo[1] = cShapeInfo[1] = time;
     hShapeInfo[2] = cShapeInfo[2] = bS;
@@ -152,9 +152,9 @@ DECLARE_SHAPE_FN(lstm) {
 
     ShapeUtils::updateStridesAndType(hShapeInfo, xShapeInfo, shape::order(h0ShapeInfo));
     ShapeUtils::updateStridesAndType(cShapeInfo, xShapeInfo, shape::order(c0ShapeInfo));
-         
+
     return SHAPELIST(CONSTANT(hShapeInfo), CONSTANT(cShapeInfo));
-}   
+}
 
 
 

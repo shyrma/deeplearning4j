@@ -15,7 +15,7 @@
  ******************************************************************************/
 
 //
-// @author Yurii Shyrma, created on 14.02.2018
+// @author Yurii Shyrma (iuriish@yahoo.com)
 //
 
 // implementation of operation for LSTM cell with peep hole connections:
