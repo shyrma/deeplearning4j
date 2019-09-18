@@ -116,6 +116,8 @@
 
 
 #define TRANSFORM_STRICT_OPS \
+        (2, ScaledTanh), \
+        (3, Affine), \
         (4, TanhDerivative), \
         (5, HardTanhDerivative), \
         (6, SigmoidDerivative), \

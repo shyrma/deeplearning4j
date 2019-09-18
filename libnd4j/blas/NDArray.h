@@ -237,7 +237,7 @@ namespace nd4j {
         *  this constructor creates new NDArray with shape matching "other" array,
         *  doesn't copy "other" elements into new array !!!
         */
-        explicit NDArray(const NDArray* other, const bool copyStrides = false, nd4j::LaunchContext* context = nd4j::LaunchContext ::defaultContext());
+        explicit NDArray(const NDArray* other, const bool copyStrides = false, nd4j::LaunchContext* context = nd4j::LaunchContext::defaultContext());
 
         /**
         *  this constructor creates scalar(and set its value = 0) or empty array depending on bool argument isScalar
@@ -1184,9 +1184,9 @@ namespace nd4j {
         /**
         * fill target matrix with given value in one or two directions from main diagonal:
         *   - down from main diagonal starting at subdiagonal number "lower" if direction = 'd' (down) or 'b' (both)
-        *   - up from main diagonal starting at superdiagonal number "upper"if direction = 'u' (up) or 'b' (both)
+        *   - up from main diagonal starting at superdiagonal number "upper" if direction = 'u' (up) or 'b' (both)
         * direction - in what direction to fill matrix. There are 3 possible directions:
-        *   'u' - fill up, mathematically this corresponds to lower triangular matrix, subdiagonal "lower" unaffected
+        *   'u' - fill up, mathematically this corresponds to lower triangular matrix, subdiagonal "lower" remains unaffected
         *   'l' - fill down, mathematically this corresponds to upper triangular matrix, superdiagonal "upper" remains unaffected
         *   'b' - fill in both directions, both "lower" and "upper" are taken into account
         * rest of target elements are equal to this array elements
