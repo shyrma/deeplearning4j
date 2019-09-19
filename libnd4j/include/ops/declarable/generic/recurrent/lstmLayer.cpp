@@ -32,26 +32,95 @@ namespace ops  {
 CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 4) {
 
     // equations (no peephole connections)
-    // it  =    σ(Wxi * xt  +  Wri * ht-1  +  bi)
-    // ft  =    σ(Wxf * xt  +  Wrf * ht-1  +  bf)
-    // ot  =    σ(Wxo * xt  +  Wro * ht-1  +  bo)
+    // it  = σ(Wxi * xt  +  Wri * ht-1  +  bi)
+    // ft  = σ(Wxf * xt  +  Wrf * ht-1  +  bf)
     // c't = tanh(Wxc * xt  +  Wrc * ht-1  +  bc)
-    // ct = ft ◦ ct-1 + it ◦ c't
-    // ht = ot ◦ tanh(ct)
+    // ct  = ft ◦ ct-1 + it ◦ c't
+    // ot  = σ(Wxo * xt  +  Wro * ht-1  +  bo)
+    // ht  = ot ◦ tanh(ct)
 
     // equations (peephole connections are present)
-    // it  =    σ(Wxi * xt  +  Wri * ht-1  +  Wpi * ct-1  +  bi)
-    // ft  =    σ(Wxf * xt  +  Wrf * ht-1  +  Wpf * ct-1  +  bf)
-    // ot  =    σ(Wxo * xt  +  Wro * ht-1  +  Wpo * ct-1  +  bo)
-    // c't = tanh(Wxc * xt  +  Wrc * ht-1  +  Wpc * ct-1  +  bc)
-    // ct = ft ◦ ct-1 + it ◦ c't
-    // ht = ot ◦ tanh(ct)
+    // it  = σ(Wxi * xt  +  Wri * ht-1  +  Wpi ◦ ct-1  +  bi)
+    // ft  = σ(Wxf * xt  +  Wrf * ht-1  +  Wpf ◦ ct-1  +  bf)
+    // c't = tanh(Wxc * xt  +  Wrc * ht-1  +  bc)
+    // ct  = ft ◦ ct-1 + it ◦ c't
+    // ot  = σ(Wxo * xt  +  Wro * ht-1  +  Wpo ◦ ct  +  bo)
+    // ht  = ot ◦ tanh(ct)
 
     // notations:
     // bS - batch size
     // sL - sequence length, number of time steps
     // nIn - input size
     // nOut - output size (hidden size)
+
+    //     INPUTS:
+
+    // *******
+    // input x:
+    // 1) [sL, bS, nIn],    when (direction != 2 && format == 0)
+    // 2) [bS, sL, nIn],    when (direction != 2 && format == 1)
+    // 3) [bS, nIn, sL],    when (direction != 2 && format == 2)
+    // 4) [sL, 2, bS, nIn], when (direction == 2 && format == 3)
+
+    // *******
+    // input weights Wx:
+    // 1) [nIn, 4*nOut]    when direction != 2
+    // 2) [2, nIn, 4*nOut] when direction == 2
+
+    // *******
+    // recurrent weights Wr:
+    // 1) [nOut, 4*nOut]    when direction != 2
+    // 2) [2, nOut, 4*nOut] when direction == 2
+
+    // *******
+    // peephole weights Wp:
+    // 1) [3*nOut]    when direction != 2
+    // 2) [2, 3*nOut] when direction == 2
+
+    // *******
+    // biases b:
+    // 1) [4*nOut]    when direction != 2
+    // 2) [2, 4*nOut] when direction == 2
+
+    // *******
+    // sequence length array seqLen:
+    // 1) [bS] always
+
+    // *******
+    // initial output hI:
+    // 1) [bS, nOut]    when direction != 2
+    // 2) [2, bS, nOut] when direction == 2
+
+    // *******
+    // initial cell state cI (same shape as in hI):
+    // 1) [bS, nOut]    when direction != 2
+    // 2) [2, bS, nOut] when direction == 2
+
+
+    //     OUTPUTS:
+
+    // *******
+    // output h:
+    // 1) [sL, bS, nOut]    when (direction != 2 || (direction == 2 && bidirMode == 1)) && format == 0
+    // 2) [bS, sL, nOut]    when (direction != 2 || (direction == 2 && bidirMode == 1)) && format == 1
+    // 3) [bS, nOut, sL]    when (direction != 2 || (direction == 2 && bidirMode == 1)) && format == 2
+    // 4) [sL, bS, 2*nOut]  when direction == 2 && bidirMode == 0 && format == 0
+    // 5) [bS, sL, 2*nOut]  when direction == 2 && bidirMode == 0 && format == 1
+    // 6) [bS, 2*nOut, sL]  when direction == 2 && bidirMode == 0 && format == 2
+    // 7) [sL, 2, bS, nOut] when direction == 2 && bidirMode == 2
+
+    // *******
+    // output at last step hL:
+    // 1) [bS, nOut]    when direction != 2
+    // 2) [2, bS, nOut] when direction == 2
+
+    // *******
+    // cell state at last step cL (same shape as in hL):
+    // 1) [bS, nOut]    when direction != 2
+    // 2) [2, bS, nOut] when direction == 2
+
+    // !!! dimension 4*nOut implies order it, ft, c't, ot
+    // !!! dimension 3*nOut implies order it, ft, ot
 
     const auto dataFormat  = INT_ARG(0);    // for unidirectional: 0 = [sL, bS, nIn], 1 = [bS, sL ,nIn], 2 = [bS, nIn, sL], for bidirectional: 3 = [sL, 2, bS, nIn] (for ONNX)
     const auto direction   = INT_ARG(1);    // direction - left to right, or right to left: 0 = fwd, 1 = bwd, 2 = bidirectional
@@ -86,25 +155,25 @@ CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 4) {
     const auto outAlpha  = outActHasAlpha  ? T_ARG(count++) : 0;
     const auto outBeta   = outActHasBeta   ? T_ARG(count++) : 0;
 
-    const auto x  = INPUT_VARIABLE(0);          // input, for unidirectional: 0 = [sL, bS, nIn], 1 = [bS, sL ,nIn], 2 = [bS, nIn, sL], for bidirectional: 3 = [sL, 2, bS, nIn] (for ONNX)
-    const auto Wx = INPUT_VARIABLE(1);          // input weights [nIn,4*nOut] for unidirectional or [2,nIn,4*nOut] for bidirectional
-    const auto Wr = INPUT_VARIABLE(2);          // recurrent weights [nOut,4*nOut] for unidirectional or [2,nOut,4*nOut] for bidirectional
+    const auto x  = INPUT_VARIABLE(0);          // input
+    const auto Wx = INPUT_VARIABLE(1);          // input weights
+    const auto Wr = INPUT_VARIABLE(2);          // recurrent weights
 
     count = 3;
-    const auto b      = hasBiases ? INPUT_VARIABLE(count++) : nullptr;  // biases, [4*nOut] for unidirectional or [2, 4*nOut] for bidirectional
-    const auto seqLen = hasSeqLen ? INPUT_VARIABLE(count++) : nullptr;  // seqLen vector, [bS], contains integer values within [0,sL), each element of this vector set max time step per each input in batch, this means there are no calculations for time step > seqLen[index]
-    const auto hI     = hasInitH  ? INPUT_VARIABLE(count++) : nullptr;  // initial output [bS, nOut] for unidirectional and [2,bS,nOut] for bidirectional
-    const auto cI     = hasInitH  ? INPUT_VARIABLE(count++) : nullptr;  // initial cell state [bS, nOut] for unidirectional and [2,bS,nOut] for bidirectional
-    const auto Wp     = hasPH     ? INPUT_VARIABLE(count++) : nullptr;  // peephole weights, [3*nOut] for unidirectional, [2, 3*nOut] for bidirectional
+    const auto b      = hasBiases ? INPUT_VARIABLE(count++) : nullptr;  // biases
+    const auto seqLen = hasSeqLen ? INPUT_VARIABLE(count++) : nullptr;  // seqLen vector
+    const auto hI     = hasInitH  ? INPUT_VARIABLE(count++) : nullptr;  // initial output
+    const auto cI     = hasInitH  ? INPUT_VARIABLE(count++) : nullptr;  // initial cell state
+    const auto Wp     = hasPH     ? INPUT_VARIABLE(count++) : nullptr;  // peephole weights
 
     REQUIRE_TRUE(dataFormat < 3 || (dataFormat == 3 && direction == 2 && bidirMode == 2), 0, "LSTM_LAYER operation: if argument dataFormat = 3, then following arguments should be: direction == 2 and bidirMode == 2, but got dataFormat = %i, direction = %i, bidirMode = %i instead !", dataFormat, direction, bidirMode);
     REQUIRE_TRUE(cellClip >= 0 , 0, "LSTM_LAYER operation: cell clipping value should be nonnegative (>=0) !");
     REQUIRE_TRUE(retFullSeq || retLastH || retLastC, 0, "LSTM_LAYER operation: please specify what output arrays to produce !");
 
     count = 0;
-    auto h  = retFullSeq ? OUTPUT_VARIABLE(count++) : nullptr;           // output, [sL,bS,nOut] for unidirectional or [sL,2,bS,nOut] for bidirectional
-    auto hL = retLastH   ? OUTPUT_VARIABLE(count++) : nullptr;           // output at last step, [bS,nOut] for unidirectional or [2,bS,nOut] for bidirectional
-    auto cL = retLastC   ? OUTPUT_VARIABLE(count++) : nullptr;           // cell state at last step, [bS,nOut] for unidirectional or [2,bS,nOut] for bidirectional
+    auto h  = retFullSeq ? OUTPUT_VARIABLE(count++) : nullptr;           // output
+    auto hL = retLastH   ? OUTPUT_VARIABLE(count++) : nullptr;           // output at last step
+    auto cL = retLastC   ? OUTPUT_VARIABLE(count++) : nullptr;           // cell state at last step
 
     // evaluate dimensions
     const Nd4jLong sL   = dataFormat == 0 || dataFormat == 3 ? x->sizeAt(0) : ( dataFormat == 1 ? x->sizeAt(1) : x->sizeAt(2) );
@@ -169,18 +238,15 @@ DECLARE_SHAPE_FN(lstmLayer) {
 
     const auto dataFormat = INT_ARG(0);    // for unidirectional: 0 = [sL, bS, nIn], 1 = [bS, sL ,nIn], 2 = [bS, nIn, sL], for bidirectional: 3 = [sL, 2, bS, nIn] (for ONNX)
     const auto direction  = INT_ARG(1);    // direction - left to right, or right to left: 0 = fwd, 1 = bwd, 2 = bidirectional
-    // const auto gateAct     = INT_ARG(2);    // activation for input (i), forget (f) and output (o) gates
-    // const auto cellAct     = INT_ARG(3);    // activation for cell state (c)
-    // const auto outAct      = INT_ARG(4);    // activation for output (h)
     const auto bidirMode  = block.getIArguments()->size() > 5 ? INT_ARG(5) : -1; // mode for bidirectional: 0=concat, 1=sum, 2=extra output dim (in conjunction with format arg 3+), -1 = no bidirectional mode
 
     const auto retFullSeq = B_ARG(5);           // indicates whether to return whole h {h_0, h_1, ... , h_sL-1}, if true, format would be [sL,bS,nOut] (exact shape depends on dataFormat argument)
     const auto retLastH   = B_ARG(6);           // indicates whether to return output at last time step only, in this case shape would be [bS, nOut] (exact shape depends on dataFormat argument)
     const auto retLastC   = B_ARG(7);           // indicates whether to return cells state at last time step only, in this case shape would be [bS, nOut] (exact shape depends on dataFormat argument)
 
-    const auto x  = INPUT_VARIABLE(0);          // input, for unidirectional: 0 = [sL, bS, nIn], 1 = [bS, sL ,nIn], 2 = [bS, nIn, sL], for bidirectional: 3 = [sL, 2, bS, nIn] (for ONNX)
-    const auto Wx = INPUT_VARIABLE(1);          // input weights [nIn,4*nOut] for unidirectional or [2,nIn,4*nOut] for bidirectional
-    const auto Wr = INPUT_VARIABLE(2);          // recurrent weights [nOut,4*nOut] for unidirectional or [2,nOut,4*nOut] for bidirectional
+    const auto x  = INPUT_VARIABLE(0);          // input
+    const auto Wx = INPUT_VARIABLE(1);          // input weights
+    const auto Wr = INPUT_VARIABLE(2);          // recurrent weights
 
     // evaluate dimensions
     const Nd4jLong sL   = dataFormat == 0 || dataFormat == 3 ? x->sizeAt(0) : ( dataFormat == 1 ? x->sizeAt(1) : x->sizeAt(2) );
@@ -224,11 +290,9 @@ DECLARE_SHAPE_FN(lstmLayer) {
 
         std::vector<Nd4jLong> hLShape;
 
-        if(direction != 2 || bidirMode == 1)        // single direction or bidirectional with sum
+        if(direction != 2)
             hLShape = {bS, nOut};
-        else if(bidirMode == 0)                     // bidirectional with concat
-            hLShape = {bS, 2*nOut};
-        else                                        // bidirectional with extra output dimension equal to 2
+        else
             hLShape = {2, bS, nOut};
 
         shapes.push_back(ConstantShapeHelper::getInstance()->createShapeInfo(x->dataType(), x->ordering(), hLShape));
@@ -242,11 +306,9 @@ DECLARE_SHAPE_FN(lstmLayer) {
 
         std::vector<Nd4jLong> cLShape;
 
-        if(direction != 2 || bidirMode == 1)        // single direction or bidirectional with sum
+        if(direction != 2)
             cLShape = {bS, nOut};
-        else if(bidirMode == 0)                     // bidirectional with concat
-            cLShape = {bS, 2*nOut};
-        else                                        // bidirectional with extra output dimension equal to 2
+        else
             cLShape = {2, bS, nOut};
 
         shapes.push_back(ConstantShapeHelper::getInstance()->createShapeInfo(x->dataType(), x->ordering(), cLShape));

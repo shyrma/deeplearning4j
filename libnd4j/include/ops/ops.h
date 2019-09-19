@@ -1663,9 +1663,9 @@ namespace simdOps {
 			X _v = (X) d2;
 			if (d1 > _v)
 				return _v;
-			else if (d1 < -_v)
+			if (d1 < -_v)
 				return -_v;
-			else return d1;
+			return d1;
 		}
 	};
 

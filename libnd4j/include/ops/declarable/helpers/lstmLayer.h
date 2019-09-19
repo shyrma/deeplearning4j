@@ -29,53 +29,49 @@ namespace ops     {
 namespace helpers {
 
 //////////////////////////////////////////////////////////////////////////
-static FORCEINLINE NDArray applyActivation(const NDArray& arr, const int opId, const float alpha = 0, const float beta = 0) {
-
-    NDArray result(&arr, arr.getContext());
+static FORCEINLINE void applyActivation(NDArray& x, NDArray& z, const int opId, const float alpha = 0, const float beta = 0) {
 
     switch (opId) {
         case 0:
-            (const_cast<NDArray&>(arr)).applyTransform(transform::Tanh, &result);
+            (const_cast<NDArray&>(x)).applyTransform(transform::Tanh, &z);
             break;
         case 1:
-            (const_cast<NDArray&>(arr)).applyScalar<float>(scalar::RELU, 0, &result);
+            (const_cast<NDArray&>(x)).applyScalar<float>(scalar::RELU, 0, &z);
             break;
         case 2:
-            (const_cast<NDArray&>(arr)).applyTransform(transform::Sigmoid, &result);
+            (const_cast<NDArray&>(x)).applyTransform(transform::Sigmoid, &z);
             break;
         case 3: {
             ExtraArguments args({ static_cast<double>(alpha), static_cast<double>(beta)});
-            (const_cast<NDArray&>(arr)).applyTransform(transform::Affine, &result, &args);
+            (const_cast<NDArray&>(x)).applyTransform(transform::Affine, &z, &args);
             break;
         }
         case 4:
-            (const_cast<NDArray&>(arr)).applyScalar<float>(scalar::LeakyRELU, alpha, &result);
+            (const_cast<NDArray&>(x)).applyScalar<float>(scalar::LeakyRELU, alpha, &z);
             break;
         case 5:
-            helpers::thresholdRelu(arr.getContext(), arr, alpha, result);
+            helpers::thresholdRelu(x.getContext(), x, alpha, z);
             break;
         case 6: {
             ExtraArguments args({ static_cast<double>(alpha), static_cast<double>(beta)});
-            (const_cast<NDArray&>(arr)).applyTransform(transform::ScaledTanh, &result, &args);
+            (const_cast<NDArray&>(x)).applyTransform(transform::ScaledTanh, &z, &args);
             break;
         }
         case 7:
-            (const_cast<NDArray&>(arr)).applyTransform(transform::HardSigmoid, &result);
+            (const_cast<NDArray&>(x)).applyTransform(transform::HardSigmoid, &z);
             break;
         case 8:
-            (const_cast<NDArray&>(arr)).applyScalar<float>(scalar::ELU, alpha, &result);
+            (const_cast<NDArray&>(x)).applyScalar<float>(scalar::ELU, alpha, &z);
             break;
         case 9:
-            (const_cast<NDArray&>(arr)).applyTransform(transform::SoftSign, &result);
+            (const_cast<NDArray&>(x)).applyTransform(transform::SoftSign, &z);
             break;
         case 10:
-            (const_cast<NDArray&>(arr)).applyTransform(transform::SoftPlus, &result);
+            (const_cast<NDArray&>(x)).applyTransform(transform::SoftPlus, &z);
             break;
         default:
             throw std::invalid_argument("LSTM_LAYER operation: wrong id number of activation !");
     }
-
-    return result;
 }
 
 
