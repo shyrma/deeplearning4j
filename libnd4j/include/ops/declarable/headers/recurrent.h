@@ -233,7 +233,7 @@ namespace ops  {
 
         //////////////////////////////////////////////////////////////////////////
         #if NOT_EXCLUDED(OP_lstmLayer)
-        DECLARE_CUSTOM_OP(lstmLayer, 3, 1, false, 1, 4);
+        DECLARE_CUSTOM_OP(lstmLayer, 3, 1, false, 1, 5);
         #endif
 
     //////////////////////////////////////////////////////////////////////////

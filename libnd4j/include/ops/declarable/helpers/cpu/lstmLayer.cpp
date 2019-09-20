@@ -41,11 +41,10 @@ namespace helpers {
 
 
 //////////////////////////////////////////////////////////////////////////
-void lstmLayerCell(nd4j::LaunchContext* context,
-                  const NDArray* x, const NDArray* Wx, const NDArray* Wr,
-                  const NDArray* b, const NDArray* hI, const NDArray* cI, const NDArray* Wp,
-                  const std::vector<float>& params,
-                  NDArray* h, NDArray* c) {
+void lstmLayerCell(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
+                   const NDArray* b, const NDArray* hI, const NDArray* cI, const NDArray* Wp,
+                   const std::vector<float>& params,
+                   NDArray* h, NDArray* c) {
 
 
     /************************ THIS IS NOT OPTIMAZED CODE ***********************************/
@@ -70,19 +69,19 @@ void lstmLayerCell(nd4j::LaunchContext* context,
 
     // IDs for activations: 0=tanh, 1=relu, 2=sigmoid, 3=affine, 4=leaky relu, 5= thresholded relu, 6=scaled tanh, 7=hard sigmoid, 8=ELU, 9=softsign, 10=softplus
 
-    // params[0] - cell clipping value, if it = 0 then do not apply clipping
+    // params[2] - cell clipping value, if it = 0 then do not apply clipping
 
-    // params[1] - activation ID for input (i), forget (f) and output (o) gates
-    // params[2] - alpha value for gates activation
-    // params[3] - beta value for gates activation
+    // params[3]  - activation ID for input (i), forget (f) and output (o) gates
+    // params[4]  - alpha value for gates activation
+    // params[5]  - beta value for gates activation
 
-    // params[4] - activation ID for cell state (c)
-    // params[5] - alpha value for cell state activation
-    // params[6] - beta value for cell state activation
+    // params[6]  - activation ID for cell state (c)
+    // params[7]  - alpha value for cell state activation
+    // params[8]  - beta value for cell state activation
 
-    // params[7] - activation ID for output (h)
-    // params[8] - alpha value for output activation
-    // params[9] - beta value for output activation
+    // params[9]  - activation ID for output (h)
+    // params[10] - alpha value for output activation
+    // params[11] - beta value for output activation
 
     // INPUTS:
     // x  - current input [bS, nIn] at time t
@@ -117,26 +116,98 @@ void lstmLayerCell(nd4j::LaunchContext* context,
         zf += *cI * Wp({nOut, 2*nOut});      // broadcast: [bS, nOut] + [bS, nOut] ◦ [nOut] = [bS, nOut]
     }
 
-    applyActivation(zi, zi, params[1], params[2], params[3]);   // inplace
-    applyActivation(zf, zf, params[1], params[2], params[3]);   // inplace
-    applyActivation(zc, zc, params[4], params[5], params[6]);   // inplace
+    applyActivation(zi, params[3], params[4], params[5], zi);   // inplace
+    applyActivation(zf, params[3], params[4], params[5], zf);   // inplace
+    applyActivation(zc, params[6], params[7], params[8], zc);   // inplace
 
     c->assign(zf * *cI + zi * zc);          // [bS, nOut] ◦ [bS, nOut] + [bS, nOut] ◦ [bS, nOut] = [bS, nOut]
 
     // if clipping value is non-zero then cell state is clipped by this value prior to the cell output activation
     if(params[0] != 0)
-        c->applyScalar(scalar::LstmClip, params[0]);
+        c->applyScalar(scalar::LstmClip, params[2]);
 
     // peephole connections for output gate
     if(Wp != nullptr) {
         zo += *c * Wp({2*nOut, 3*nOut});    // broadcast: [bS, nOut] + [nOut] ◦ [bS, nOut] = [bS, nOut]
 
-    applyActivation(zo, zo, params[1], params[2], params[3]);
+    applyActivation(zo, params[3], params[4], params[5], zo);
 
-    applyActivation(*c, *h, params[7], params[8], params[9]);
+    applyActivation(*c, params[9], params[10], params[11], *h);
     *h *= zo;                               // [bS, nOut] ◦ [bS, nOut]
 }
 
+
+
+//////////////////////////////////////////////////////////////////////////
+void lstmLayerTimeLoop(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
+                       const NDArray* b, const NDArray* seqLen, const NDArray* hI, const NDArray* cI, const NDArray* Wp,
+                       const std::vector<float>& params,
+                       const bool forward,
+                       NDArray* h, NDArray* hL, NDArray* cL) {
+
+    // INPUTS:
+    // x  - current input  [sL, bS, nIn],  [bS, sL, nIn],  [bS, nIn, sL],
+    // Wx - input weights [nIn, 4*nOut]
+    // Wr - recurrent weights [nOut, 4*nOut]
+    // b  - biases [4*nOut], optional, may be nullptr
+    // seqLen - [bS], optional, may be nullptr
+    // hI - initial output  [bS, nOut], optional, may be nullptr
+    // cI - initial cell state at time t-1 [bS, nOut], optional, may be nullptr
+    // Wp - peephole weights [3*nOut], optional, may be nullptr
+
+    // OUTPUTS:
+    // h - output [sL, bS, nOut],  [bS, sL, nOut],  [bS, nOut, sL], optional, may be nullptr
+    // hL - output at last step [bS, nOut], optional, may be nullptr
+    // cL - cell state at last step [bS, nOut], optional, may be nullptr
+
+    // params = {dataFormat, directionMode, cellClip, gateAct, gateAlpha, gateBeta, cellAct, cellAlpha, cellBeta, outAct, outAlpha, outBeta};
+
+    // time
+    const Nd4jLong sL   = x->sizeAt(params[0]);
+    const Nd4jLong bS   = params[0] == 1 || params[0] == 2 ? x->sizeAt(0) : x->sizeAt(1);
+    const Nd4jLong nOut = Wx->sizeAt(-1) / 4;
+
+
+    int t, stop, step;
+
+    if(forward) {
+        t = 0; stop = sL; step = 1;
+    }
+    else {
+        t = sL - 1; stop = -1; step = -1;
+    }
+
+    // 1) [sL, bS, nOut]    when directionMode <= 2 && dataFormat == 0
+    // 2) [bS, sL, nOut]    when directionMode <= 2 && dataFormat == 1
+    // 3) [bS, nOut, sL]    when directionMode <= 2 && dataFormat == 2
+
+    NDArray* ht = const_cast<NDArray*>(hI);
+    if(hI == nullptr) {
+         ht = hL;
+         if(hL == nullptr)
+             ht = new NDArray(x->ordering(), {bS, nOut}, x->dataType(), x->getContext());
+    }
+    NDArray* ct(*c0);
+
+    if(seqLen == nullptr) {
+
+        // loop through time steps
+        while (t != stop) {
+
+            auto xt = lstmLayertimeSubset(*x, t, params[0]) {
+            auto ht = (*h)({t,t+1, 0,0, 0,0});
+            auto ct = (*c)({t,t+1, 0,0, 0,0});
+
+            helpers::lstmLayerCell(context, &xt,&currentH,&currentC, Wx,Wh,Wc,Wp, b,   &ht, &ct,   params);
+            currentH.assign(ht);
+            currentC.assign(ct);
+
+            t += step;
+        }
+    }
+
+
+}
 
 
 

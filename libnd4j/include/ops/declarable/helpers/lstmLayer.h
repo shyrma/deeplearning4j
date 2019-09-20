@@ -29,7 +29,14 @@ namespace ops     {
 namespace helpers {
 
 //////////////////////////////////////////////////////////////////////////
-static FORCEINLINE void applyActivation(NDArray& x, NDArray& z, const int opId, const float alpha = 0, const float beta = 0) {
+void lstmLayerTimeLoop(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
+                        const NDArray* b, const NDArray* seqLen, const NDArray* hI, const NDArray* cI, const NDArray* Wp,
+                        const std::vector<float>& params,
+                        const bool forward,
+                        NDArray* h, NDArray* hL, NDArray* cL);
+
+//////////////////////////////////////////////////////////////////////////
+static FORCEINLINE void applyActivation(NDArray& x, const int opId, const float alpha, const float beta, NDArray& z) {
 
     switch (opId) {
         case 0:
@@ -74,6 +81,17 @@ static FORCEINLINE void applyActivation(NDArray& x, NDArray& z, const int opId, 
     }
 }
 
+//////////////////////////////////////////////////////////////////////////
+static NDArray lstmLayertimeSubset(const NDArray& arr, const int t, const int dataFormat) {
+
+    if(dataFormat == 0)
+        return (*arr)({t,t+1, 0,0, 0,0});   // TNS: shape [sL, bS, nIn]
+
+    if(dataFormat == 1)
+        return (*arr)({0,0, t,t+1, 0,0});   // NTS: shape [bS, sL, nIn]
+
+    return (*arr)({0,0, 0,0, t,t+1});       // NST: shape [bS, nIn, sL]
+}
 
 
 }

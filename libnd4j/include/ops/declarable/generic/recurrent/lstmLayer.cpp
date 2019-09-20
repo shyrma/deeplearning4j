@@ -29,7 +29,7 @@ namespace ops  {
 
 
 //////////////////////////////////////////////////////////////////////////
-CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 4) {
+CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 5) {
 
     // equations (no peephole connections)
     // it  = σ(Wxi * xt  +  Wri * ht-1  +  bi)
@@ -57,30 +57,30 @@ CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 4) {
 
     // *******
     // input x:
-    // 1) [sL, bS, nIn],    when (direction != 2 && format == 0)
-    // 2) [bS, sL, nIn],    when (direction != 2 && format == 1)
-    // 3) [bS, nIn, sL],    when (direction != 2 && format == 2)
-    // 4) [sL, 2, bS, nIn], when (direction == 2 && format == 3)
+    // 1) [sL, bS, nIn],    when (directionMode != 4 && dataFormat == 0)
+    // 2) [bS, sL, nIn],    when (directionMode != 4 && dataFormat == 1)
+    // 3) [bS, nIn, sL],    when (directionMode != 4 && dataFormat == 2)
+    // 4) [sL, 2, bS, nIn], when (directionMode == 4 && dataFormat == 3)
 
     // *******
     // input weights Wx:
-    // 1) [nIn, 4*nOut]    when direction != 2
-    // 2) [2, nIn, 4*nOut] when direction == 2
+    // 1) [nIn, 4*nOut]    when directionMode != 4
+    // 2) [2, nIn, 4*nOut] when directionMode == 4
 
     // *******
     // recurrent weights Wr:
-    // 1) [nOut, 4*nOut]    when direction != 2
-    // 2) [2, nOut, 4*nOut] when direction == 2
+    // 1) [nOut, 4*nOut]    when directionMode != 4
+    // 2) [2, nOut, 4*nOut] when directionMode == 4
 
     // *******
     // peephole weights Wp:
-    // 1) [3*nOut]    when direction != 2
-    // 2) [2, 3*nOut] when direction == 2
+    // 1) [3*nOut]    when directionMode != 4
+    // 2) [2, 3*nOut] when directionMode == 4
 
     // *******
     // biases b:
-    // 1) [4*nOut]    when direction != 2
-    // 2) [2, 4*nOut] when direction == 2
+    // 1) [4*nOut]    when directionMode != 4
+    // 2) [2, 4*nOut] when directionMode == 4
 
     // *******
     // sequence length array seqLen:
@@ -88,47 +88,46 @@ CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 4) {
 
     // *******
     // initial output hI:
-    // 1) [bS, nOut]    when direction != 2
-    // 2) [2, bS, nOut] when direction == 2
+    // 1) [bS, nOut]    when directionMode != 4
+    // 2) [2, bS, nOut] when directionMode == 4
 
     // *******
     // initial cell state cI (same shape as in hI):
-    // 1) [bS, nOut]    when direction != 2
-    // 2) [2, bS, nOut] when direction == 2
+    // 1) [bS, nOut]    when directionMode != 4
+    // 2) [2, bS, nOut] when directionMode == 4
 
 
     //     OUTPUTS:
 
     // *******
     // output h:
-    // 1) [sL, bS, nOut]    when (direction != 2 || (direction == 2 && bidirMode == 1)) && format == 0
-    // 2) [bS, sL, nOut]    when (direction != 2 || (direction == 2 && bidirMode == 1)) && format == 1
-    // 3) [bS, nOut, sL]    when (direction != 2 || (direction == 2 && bidirMode == 1)) && format == 2
-    // 4) [sL, bS, 2*nOut]  when direction == 2 && bidirMode == 0 && format == 0
-    // 5) [bS, sL, 2*nOut]  when direction == 2 && bidirMode == 0 && format == 1
-    // 6) [bS, 2*nOut, sL]  when direction == 2 && bidirMode == 0 && format == 2
-    // 7) [sL, 2, bS, nOut] when direction == 2 && bidirMode == 2
+    // 1) [sL, bS, nOut]    when directionMode <= 2 && dataFormat == 0
+    // 2) [bS, sL, nOut]    when directionMode <= 2 && dataFormat == 1
+    // 3) [bS, nOut, sL]    when directionMode <= 2 && dataFormat == 2
+    // 4) [sL, bS, 2*nOut]  when directionMode == 3 && dataFormat == 0
+    // 5) [bS, sL, 2*nOut]  when directionMode == 3 && dataFormat == 1
+    // 6) [bS, 2*nOut, sL]  when directionMode == 3 && dataFormat == 2
+    // 7) [sL, 2, bS, nOut] when directionMode == 4 && dataFormat == 2
 
     // *******
     // output at last step hL:
-    // 1) [bS, nOut]    when direction != 2
-    // 2) [2, bS, nOut] when direction == 2
+    // 1) [bS, nOut]    when directionMode != 4
+    // 2) [2, bS, nOut] when directionMode == 4
 
     // *******
     // cell state at last step cL (same shape as in hL):
-    // 1) [bS, nOut]    when direction != 2
-    // 2) [2, bS, nOut] when direction == 2
+    // 1) [bS, nOut]    when directionMode != 4
+    // 2) [2, bS, nOut] when directionMode == 4
 
     // !!! dimension 4*nOut implies order it, ft, c't, ot
     // !!! dimension 3*nOut implies order it, ft, ot
 
-    const auto dataFormat  = INT_ARG(0);    // for unidirectional: 0 = [sL, bS, nIn], 1 = [bS, sL ,nIn], 2 = [bS, nIn, sL], for bidirectional: 3 = [sL, 2, bS, nIn] (for ONNX)
-    const auto direction   = INT_ARG(1);    // direction - left to right, or right to left: 0 = fwd, 1 = bwd, 2 = bidirectional
+    const auto dataFormat    = INT_ARG(0);    // for unidirectional: 0 = [sL, bS, nIn], 1 = [bS, sL ,nIn], 2 = [bS, nIn, sL], for bidirectional: 3 = [sL, 2, bS, nIn] (for ONNX)
+    const auto directionMode = INT_ARG(1);    // direction: 0 = fwd, 1 = bwd, 2 = bidirectional sum, 3 = bidirectional concat, 4 = bidirectional extra output dim (in conjunction with format arg 3+)
     // integer numbers corresponding to activations: 0=tanh, 1=relu, 2=sigmoid, 3=affine, 4=leaky relu, 5= thresholded relu, 6=scaled tanh, 7=hard sigmoid, 8=ELU, 9=softsign, 10=softplus
-    const auto gateAct     = INT_ARG(2);    // activation for input (i), forget (f) and output (o) gates
-    const auto cellAct     = INT_ARG(3);    // activation for cell state (c)
-    const auto outAct      = INT_ARG(4);    // activation for output (h)
-    const auto bidirMode   = block.getIArguments()->size() > 5 ? INT_ARG(5) : -1; // mode for bidirectional: 0=concat, 1=sum, 2=extra output dim (in conjunction with format arg 3+), -1 = no bidirectional mode
+    const auto gateAct       = INT_ARG(2);    // activation for input (i), forget (f) and output (o) gates
+    const auto cellAct       = INT_ARG(3);    // activation for cell state (c)
+    const auto outAct        = INT_ARG(4);    // activation for output (h)
 
     const auto hasBiases  = B_ARG(0);   // indicates whether biases array is provided
     const auto hasSeqLen  = B_ARG(1);   // indicates whether seqLen array is provided
@@ -166,7 +165,7 @@ CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 4) {
     const auto cI     = hasInitH  ? INPUT_VARIABLE(count++) : nullptr;  // initial cell state
     const auto Wp     = hasPH     ? INPUT_VARIABLE(count++) : nullptr;  // peephole weights
 
-    REQUIRE_TRUE(dataFormat < 3 || (dataFormat == 3 && direction == 2 && bidirMode == 2), 0, "LSTM_LAYER operation: if argument dataFormat = 3, then following arguments should be: direction == 2 and bidirMode == 2, but got dataFormat = %i, direction = %i, bidirMode = %i instead !", dataFormat, direction, bidirMode);
+    REQUIRE_TRUE(dataFormat < 3 || (dataFormat == 3 && directionMode == 4), 0, "LSTM_LAYER operation: if argument dataFormat = 3, then directionMode = 4, but got dataFormat = %i and directionMode = %i instead !", dataFormat, directionMode);
     REQUIRE_TRUE(cellClip >= 0 , 0, "LSTM_LAYER operation: cell clipping value should be nonnegative (>=0) !");
     REQUIRE_TRUE(retFullSeq || retLastH || retLastC, 0, "LSTM_LAYER operation: please specify what output arrays to produce !");
 
@@ -176,13 +175,13 @@ CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 4) {
     auto cL = retLastC   ? OUTPUT_VARIABLE(count++) : nullptr;           // cell state at last step
 
     // evaluate dimensions
-    const Nd4jLong sL   = dataFormat == 0 || dataFormat == 3 ? x->sizeAt(0) : ( dataFormat == 1 ? x->sizeAt(1) : x->sizeAt(2) );
+    const Nd4jLong sL   = dataFormat == 3 ?  x->sizeAt(0) : x->sizeAt(dataFormat);
     const Nd4jLong bS   = dataFormat == 1 || dataFormat == 2 ? x->sizeAt(0) : x->sizeAt(-2);
     const Nd4jLong nIn  = dataFormat == 2 ? x->sizeAt(1) : x->sizeAt(-1);
     const Nd4jLong nOut = Wx->sizeAt(-1) / 4;
 
     // inputs validations
-    if(direction != 2) {
+    if(directionMode != 4) {
 
         // Wx validation
         if(Wx->rankOf() != 2 || Wx->sizeAt(0) != nIn)
@@ -224,6 +223,10 @@ CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 4) {
             REQUIRE_TRUE(false, 0, "LSTM_LAYER operation: wrong peephole weights, expected is %s, but got %s instead !", ShapeUtils::shapeAsString({2, 3*nOut}).c_str(), ShapeUtils::shapeAsString(Wp));
     }
 
+    std::vector<float> params = {dataFormat, directionMode, cellClip, gateAct, gateAlpha, gateBeta, cellAct, cellAlpha, cellBeta, outAct, outAlpha, outBeta};
+
+    lstmLayerTimeLoop(x, Wx, Wr, b, seqLen, hI, cI, Wp, params, true, h, hL, cL);
+
     return Status::OK();
 }
 
@@ -236,9 +239,8 @@ DECLARE_TYPES(lstmLayer) {
 
 DECLARE_SHAPE_FN(lstmLayer) {
 
-    const auto dataFormat = INT_ARG(0);    // for unidirectional: 0 = [sL, bS, nIn], 1 = [bS, sL ,nIn], 2 = [bS, nIn, sL], for bidirectional: 3 = [sL, 2, bS, nIn] (for ONNX)
-    const auto direction  = INT_ARG(1);    // direction - left to right, or right to left: 0 = fwd, 1 = bwd, 2 = bidirectional
-    const auto bidirMode  = block.getIArguments()->size() > 5 ? INT_ARG(5) : -1; // mode for bidirectional: 0=concat, 1=sum, 2=extra output dim (in conjunction with format arg 3+), -1 = no bidirectional mode
+    const auto dataFormat    = INT_ARG(0);    // for unidirectional: 0 = [sL, bS, nIn], 1 = [bS, sL ,nIn], 2 = [bS, nIn, sL], for bidirectional: 3 = [sL, 2, bS, nIn] (for ONNX)
+    const auto directionMode = INT_ARG(1);    // direction: 0 = fwd, 1 = bwd, 2 = bidirectional sum, 3 = bidirectional concat, 4 = bidirectional extra output dim
 
     const auto retFullSeq = B_ARG(5);           // indicates whether to return whole h {h_0, h_1, ... , h_sL-1}, if true, format would be [sL,bS,nOut] (exact shape depends on dataFormat argument)
     const auto retLastH   = B_ARG(6);           // indicates whether to return output at last time step only, in this case shape would be [bS, nOut] (exact shape depends on dataFormat argument)
@@ -261,7 +263,7 @@ DECLARE_SHAPE_FN(lstmLayer) {
 
         std::vector<Nd4jLong> hShape;
 
-        if(direction != 2 || bidirMode == 1) {      // single direction or bidirectional with sum
+        if(directionMode <= 2) {                // single direction or bidirectional with sum
             if(dataFormat == 0)
                 hShape = {sL, bS, nOut};
             else if(dataFormat == 1)
@@ -269,7 +271,7 @@ DECLARE_SHAPE_FN(lstmLayer) {
             else if(dataFormat == 2)
                 hShape = {bS, nOut, sL};
         }
-        else if(bidirMode == 0) {                   // bidirectional with concat
+        else if(directionMode == 3) {           // bidirectional with concat
 
             if(dataFormat == 0)
                 hShape = {sL, bS, 2*nOut};
@@ -278,7 +280,7 @@ DECLARE_SHAPE_FN(lstmLayer) {
             else if(dataFormat == 2)
                 hShape = {bS, 2*nOut, sL};
         }
-        else {                                      // bidirectional with extra output dimension equal to 2
+        else {                                  // bidirectional with extra output dimension equal to 2
             hShape = {sL, 2, bS, nOut};
         }
 
@@ -290,7 +292,7 @@ DECLARE_SHAPE_FN(lstmLayer) {
 
         std::vector<Nd4jLong> hLShape;
 
-        if(direction != 2)
+        if(directionMode != 4)
             hLShape = {bS, nOut};
         else
             hLShape = {2, bS, nOut};
@@ -306,7 +308,7 @@ DECLARE_SHAPE_FN(lstmLayer) {
 
         std::vector<Nd4jLong> cLShape;
 
-        if(direction != 2)
+        if(directionMode != 4)
             cLShape = {bS, nOut};
         else
             cLShape = {2, bS, nOut};
