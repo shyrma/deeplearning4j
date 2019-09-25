@@ -66,6 +66,8 @@ void rnnTimeLoop(nd4j::LaunchContext * context, const NDArray* x, const NDArray*
         *hFinal = 0.;
 
     BlasHelper::getInstance();          // to avoid memory leak in pragma parallel loops
+
+    // FIXME: not optimized nested loops
     // loop through batch of inputs
     for (int e = 0; e < bS; ++e) {
         // loop through time steps

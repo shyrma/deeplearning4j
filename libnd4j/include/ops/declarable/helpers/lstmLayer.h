@@ -82,15 +82,24 @@ static FORCEINLINE void applyActivation(NDArray& x, const int opId, const float 
 }
 
 //////////////////////////////////////////////////////////////////////////
-static NDArray lstmLayertimeSubset(const NDArray& arr, const int t, const int dataFormat) {
+// static NDArray lstmLayertimeSubset(const NDArray& arr, const int t, const int dataFormat) {
+
+//     if(dataFormat == 0)
+//         return arr({t,t+1, 0,0, 0,0});   // TNS: shape [sL, bS, nIn]
+
+//     if(dataFormat == 1)
+//         return arr({0,0, t,t+1, 0,0});   // NTS: shape [bS, sL, nIn]
+
+//     return arr({0,0, 0,0, t,t+1});       // NST: shape [bS, nIn, sL]
+// }
+
+//////////////////////////////////////////////////////////////////////////
+static FORCEINLINE int getBatchTimeTotalIndex(const int dataFormat, const int b, const int t) {
 
     if(dataFormat == 0)
-        return (*arr)({t,t+1, 0,0, 0,0});   // TNS: shape [sL, bS, nIn]
+        return t * b + b;   // TNS: shape [sL, bS, nIn]
 
-    if(dataFormat == 1)
-        return (*arr)({0,0, t,t+1, 0,0});   // NTS: shape [bS, sL, nIn]
-
-    return (*arr)({0,0, 0,0, t,t+1});       // NST: shape [bS, nIn, sL]
+    return b * t + t;       // NTS, NST: shape [bS, sL, nIn], [bS, nIn, sL]
 }
 
 

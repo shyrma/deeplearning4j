@@ -223,9 +223,12 @@ CUSTOM_OP_IMPL(lstmLayer, 3, 1, false, 1, 5) {
             REQUIRE_TRUE(false, 0, "LSTM_LAYER operation: wrong peephole weights, expected is %s, but got %s instead !", ShapeUtils::shapeAsString({2, 3*nOut}).c_str(), ShapeUtils::shapeAsString(Wp));
     }
 
-    std::vector<float> params = {dataFormat, directionMode, cellClip, gateAct, gateAlpha, gateBeta, cellAct, cellAlpha, cellBeta, outAct, outAlpha, outBeta};
+    std::vector<float> params = {static_cast<float>(dataFormat), static_cast<float>(directionMode), static_cast<float>(cellClip),
+                                 static_cast<float>(gateAct), static_cast<float>(gateAlpha), static_cast<float>(gateBeta),
+                                 static_cast<float>(cellAct), static_cast<float>(cellAlpha), static_cast<float>(cellBeta),
+                                 static_cast<float>(outAct), static_cast<float>(outAlpha), static_cast<float>(outBeta)};
 
-    lstmLayerTimeLoop(x, Wx, Wr, b, seqLen, hI, cI, Wp, params, true, h, hL, cL);
+    helpers::lstmLayerTimeLoop(x, Wx, Wr, b, seqLen, hI, cI, Wp, params, true, h, hL, cL);
 
     return Status::OK();
 }
