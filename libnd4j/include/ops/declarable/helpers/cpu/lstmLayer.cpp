@@ -70,6 +70,7 @@ void lstmLayerCell(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
 
     // IDs for activations: 0=tanh, 1=relu, 2=sigmoid, 3=affine, 4=leaky relu, 5= thresholded relu, 6=scaled tanh, 7=hard sigmoid, 8=ELU, 9=softsign, 10=softplus
 
+    // params[0] and params[1] - ignore
     // params[2] - cell clipping value, if it = 0 then do not apply clipping
 
     // params[3]  - activation ID for input (i), forget (f) and output (o) gates
@@ -102,7 +103,8 @@ void lstmLayerCell(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
 
     const Nd4jLong nOut = Wx->sizeAt(-1) / 4;
 
-    auto z = mmul(*x, *Wx) + mmul(*hI, *Wr);       //  [bs, nIn] * [nIn, 4*nOut] + [bs, nOut] * [nOut, 4*nOut] = [bS, 4*nOut]
+    auto z = mmul(*x, *Wx) + mmul(*hI, *Wr);    //   [bs, nIn] * [nIn, 4*nOut] + [bs, nOut] * [nOut, 4*nOut] = [bS, 4*nOut]
+                                                //or [nIn] * [nIn, 4*nOut] + [nOut] * [nOut, 4*nOut] = [4*nOut]
 
     // add biases if they are given
     if(b != nullptr)
@@ -126,7 +128,7 @@ void lstmLayerCell(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
     c->assign(zf * *cI + zi * zc);          // [bS, nOut] ◦ [bS, nOut] + [bS, nOut] ◦ [bS, nOut] = [bS, nOut]
 
     // if clipping value is non-zero then cell state is clipped by this value prior to the cell output activation
-    if(params[0] != 0)
+    if(params[2] != 0)
         c->applyScalar(scalar::LstmClip, params[2]);
 
     // peephole connections for output gate
@@ -195,128 +197,196 @@ void lstmLayerTimeLoop(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
     if(!h && !hL)
         ht = new NDArray(x->ordering(), shapeOut, x->dataType(), x->getContext());
 
-    int start, stop, step;
-    if(forward) {
-        start = 0;
-        stop  = sL;
-        step  = 1;
-    }
-    else {
-        start = sL - 1;
-        stop = -1;
-        step = -1;
-    }
+    // create sets of required (depends on seqLen presence) sub-arrays
+    std::vector<int> dims;
+    ResultSet *xSet(nullptr), *hSet(nullptr), *htSet(nullptr), *ctSet(nullptr);
 
     if(!seqLen) {
 
-        const std::vector<int> dims = ShapeUtils::evalDimsToExclude(x->rankOf(), {dataFormat < 3 ? dataFormat : 0});    // along bS and nIn axes
+        dims = ShapeUtils::evalDimsToExclude(x->rankOf(), {dataFormat < 3 ? dataFormat : 0});    // points on bS and nIn/nOut axes
 
-        const auto xSet = x->allTensorsAlongDimension(dims);                // shape [bS, nIn]
-        const auto hSet = h ? h->allTensorsAlongDimension(dims) : nullptr;  // shape [bS, nOut]
-
-        if(!h) {
-
-            lstmLayerCell(xSet->at(start), Wx, Wr, b, h0, c0, Wp, params, ht, ct); // first time step
-
-            for (int t = start + step; t != stop; t += step)
-                lstmLayerCell(xSet->at(t), Wx, Wr, b, ht, ct, Wp, params, ht, ct); // rest time steps
-        }
-        else {
-
-            lstmLayerCell(xSet->at(start), Wx, Wr, b, h0, c0, Wp, params, hSet->at(start), ct); // first time step
-
-            for (int t = start + step; t != stop; t += step)
-                lstmLayerCell(xSet->at(t), Wx, Wr, b, hSet->at(t - step), ct, Wp, params, hSet->at(t), ct); // rest time steps
-
-            if(hL)
-                hL->assign(hSet->at(stop - step));     // assign last output to hL if it is not nullptr
-        }
-
-        delete xSet;
-        delete hSet;
+        xSet = x->allTensorsAlongDimension(dims);       // sub-arrays with shape [bS, nIn]
+        if(h)
+            hSet = h->allTensorsAlongDimension(dims);   // sub-arrays with shape [bS, nOut]
     }
     else {
 
-        const std::vector<int> dim = dataFormat == 2 ? std::vector<int>({1}) : std::vector<int>({0});    // along nIn axis
+        dims = dataFormat == 2 ? std::vector<int>({1}) : std::vector<int>({0});    // points on nIn/nOut axis
 
-        const auto xSet  = x->allTensorsAlongDimension(dim);                   // shape [nIn]
-        const auto hSet  = h ? h->allTensorsAlongDimension(dim) : nullptr;     // shape [nOut]
-        const auto ctSet = ct->allTensorsAlongDimension({1});                   // along nOut axis, shape [nOut]
-        const auto htSet = ht ? ht->allTensorsAlongDimension({1}) : nullptr;    // along nOut axis, shape [nOut]
+        xSet  = x->allTensorsAlongDimension(dims);               //  sub-arrays with shape [nIn]
+        ctSet = ct->allTensorsAlongDimension({1});              //  sub-arrays with shape [nOut]
+        if(h)
+            hSet = h->allTensorsAlongDimension(dims);            //  sub-arrays with shape [nOut]
+        if(ht)
+            htSet = ht->allTensorsAlongDimension({1});          //  sub-arrays with shape [nOut]
+    }
 
-        if(!h) {
+    // loops
+    if(forward) {
 
-            for (int e = 0; e < bS; ++e) {
+        if(!seqLen) {
 
-                const int limit = seqLen->e<int>(e);
+            if(!h) {
 
-                if(limit == 0) {
-                    if(cL)
-                        ctSet->at(e)->nullify();
-                    if(hL)
-                        htSet->at(e)->nullify();
-                    continue;
-                }
-
-                if(forward) { start = 0;         stop = limit; }
-                else        { start = limit - 1; stop = -1;    }
-
-                auto ind = getBatchTimeTotalIndex(dataFormat, e, start);
-                lstmLayerCell(xSet->at(ind), Wx, Wr, b, h0, c0, Wp, params, htSet->at(e), ctSet->at(e)); // first time step
-
-                for (int t = start + step; t != stop; t += step) {
-                    ind = getBatchTimeTotalIndex(dataFormat, e, t);
-                    lstmLayerCell(xSet->at(ind), Wx, Wr, b, htSet->at(e), ctSet->at(e), Wp, params, htSet->at(e), ctSet->at(e)); // rest time steps
-                }
+                lstmLayerCell(xSet->at(0), Wx, Wr, b, h0, c0, Wp, params, ht, ct); // first time step
+                for (int t = 1; t < sL; ++t)
+                    lstmLayerCell(xSet->at(t), Wx, Wr, b, ht, ct, Wp, params, ht, ct); // rest time steps
             }
-        }
-        else {
+            else {
 
-            for (int e = 0; e < bS; ++e) {
-
-                int limit = seqLen->e<int>(e);
-
-                if(limit == 0) {
-
-                    for (int t = start; t != stop; t += step)
-                        hSet->at(getBatchTimeTotalIndex(dataFormat, e, t))->nullify();
-
-                    if(cL)
-                        ctSet->at(e)->nullify();
-
-                    if(hL)
-                        htSet->at(e)->assign(hSet->at(getBatchTimeTotalIndex(dataFormat, e, stop - step)));  // assign last output to hL if it is not nullptr
-
-                    continue;
-                }
-
-                if(forward) { start = 0;         stop = limit; }
-                else        { start = limit - 1; stop = -1;    }
-
-                auto indPrev = getBatchTimeTotalIndex(dataFormat, e, start);
-                lstmLayerCell(xSet->at(indPrev), Wx, Wr, b, h0, c0, Wp, params, hSet->at(indPrev), ctSet->at(e)); // first time step
-
-                for (int t = start + step; t != stop; t += step) {
-                    auto indCurr = getBatchTimeTotalIndex(dataFormat, e, t);
-                    lstmLayerCell(xSet->at(indCurr), Wx, Wr, b, hSet->at(indPrev), ctSet->at(e), Wp, params, hSet->at(indCurr), ctSet->at(e)); // rest time steps
-                    indPrev = indCurr;
-                }
+                lstmLayerCell(xSet->at(0), Wx, Wr, b, h0, c0, Wp, params, hSet->at(0), ct); // first time step
+                for (int t = 1; t < sL; ++t)
+                    lstmLayerCell(xSet->at(t), Wx, Wr, b, hSet->at(t - 1), ct, Wp, params, hSet->at(t), ct); // rest time steps
 
                 if(hL)
-                    htSet->at(e)->assign(hSet->at(indPrev));     // assign last output to hL if it is not nullptr
-
-                // nullify rest if h
-                limit = forward ? sL : -1;
-                for (int t = stop; t != limit; t += step)
-                    hSet->at(getBatchTimeTotalIndex(dataFormat, e, t))->nullify();
+                    hL->assign(hSet->at(sL - 1));     // assign last output to hL if it is not nullptr
             }
         }
+        else {  // seqLen is present
 
-        delete xSet;
-        delete hSet;
-        delete htSet;
-        delete ctSet;
+            if(!h) {
+
+                for (int e = 0; e < bS; ++e) {
+
+                    const int limit = seqLen->e<int>(e);
+
+                    if(limit == 0) {
+                        if(cL)
+                            ctSet->at(e)->nullify();
+                        if(hL)
+                            htSet->at(e)->nullify();
+                        continue;
+                    }
+
+                    auto ind = getBatchTimeTotalIndex(dataFormat, e, 0);
+                    lstmLayerCell(xSet->at(ind), Wx, Wr, b, h0, c0, Wp, params, htSet->at(e), ctSet->at(e)); // first time step
+
+                    for (int t = 1; t < limit; ++t) {
+                        ind = getBatchTimeTotalIndex(dataFormat, e, t);
+                        lstmLayerCell(xSet->at(ind), Wx, Wr, b, htSet->at(e), ctSet->at(e), Wp, params, htSet->at(e), ctSet->at(e)); // rest time steps
+                    }
+                }
+            }
+            else { // h is present
+
+                for (int e = 0; e < bS; ++e) {
+
+                    int limit = seqLen->e<int>(e);
+
+                    if(limit == 0) {
+
+                        tensorAlongTimeBatchDims(*h, dataFormat, 0,0, e,e+1).nullify();     // nullify for given e and whole time range
+
+                        if(cL)
+                            ctSet->at(e)->nullify();
+                        if(hL)
+                            htSet->at(e)->nullify();
+
+                        continue;
+                    }
+
+                    auto indPrev = getBatchTimeTotalIndex(dataFormat, e, 0);
+                    lstmLayerCell(xSet->at(indPrev), Wx, Wr, b, h0, c0, Wp, params, hSet->at(indPrev), ctSet->at(e)); // first time step
+
+                    for (int t = 1; t < limit; ++t) {
+                        auto indCurr = getBatchTimeTotalIndex(dataFormat, e, t);
+                        lstmLayerCell(xSet->at(indCurr), Wx, Wr, b, hSet->at(indPrev), ctSet->at(e), Wp, params, hSet->at(indCurr), ctSet->at(e)); // rest time steps
+                        indPrev = indCurr;
+                    }
+
+                    if(hL)
+                        htSet->at(e)->assign(hSet->at(indPrev));     // assign last output to hL if it is not nullptr
+
+                    tensorAlongTimeBatchDims(*h, dataFormat, limit,sL, e,e+1).nullify();     // nullify for given e and time range [limit, sL)
+                }
+            }
+        }
     }
+    else {   // backward
+
+         if(!seqLen) {
+
+            if(!h) {
+
+                lstmLayerCell(xSet->at(sL - 1), Wx, Wr, b, h0, c0, Wp, params, ht, ct); // first time step
+                for (int t = sL - 2; t >= 0; --t)
+                    lstmLayerCell(xSet->at(t), Wx, Wr, b, ht, ct, Wp, params, ht, ct); // rest time steps
+            }
+            else {
+
+                lstmLayerCell(xSet->at(sL - 1), Wx, Wr, b, h0, c0, Wp, params, hSet->at(0), ct); // first time step
+                for (int t = sL - 2; t >= 0; --t)
+                    lstmLayerCell(xSet->at(t), Wx, Wr, b, hSet->at(t - 1), ct, Wp, params, hSet->at(t), ct); // rest time steps
+
+                if(hL)
+                    hL->assign(hSet->at(0));     // assign last output to hL if it is not nullptr
+            }
+        }
+        else {  // seqLen is present
+
+            if(!h) {
+
+                for (int e = 0; e < bS; ++e) {
+
+                    const int limit = seqLen->e<int>(e);
+
+                    if(limit == 0) {
+                        if(cL)
+                            ctSet->at(e)->nullify();
+                        if(hL)
+                            htSet->at(e)->nullify();
+                        continue;
+                    }
+
+                    auto ind = getBatchTimeTotalIndex(dataFormat, e, limit - 1);
+                    lstmLayerCell(xSet->at(ind), Wx, Wr, b, h0, c0, Wp, params, htSet->at(e), ctSet->at(e)); // first time step
+
+                    for (int t = limit - 2; t >= 0; --t) {
+                        ind = getBatchTimeTotalIndex(dataFormat, e, t);
+                        lstmLayerCell(xSet->at(ind), Wx, Wr, b, htSet->at(e), ctSet->at(e), Wp, params, htSet->at(e), ctSet->at(e)); // rest time steps
+                    }
+                }
+            }
+            else {  // h is present
+
+                for (int e = 0; e < bS; ++e) {
+
+                    int limit = seqLen->e<int>(e);
+
+                    if(limit == 0) {
+
+                        tensorAlongTimeBatchDims(*h, dataFormat, 0,0, e,e+1).nullify();     // nullify for given e and whole time range
+
+                        if(cL)
+                            ctSet->at(e)->nullify();
+                        if(hL)
+                            htSet->at(e)->nullify();
+
+                        continue;
+                    }
+
+                    auto indPrev = getBatchTimeTotalIndex(dataFormat, e, limit - 1);
+                    lstmLayerCell(xSet->at(indPrev), Wx, Wr, b, h0, c0, Wp, params, hSet->at(indPrev), ctSet->at(e)); // first time step
+
+                    for (int t = limit - 2; t >= 0; --t) {
+                        auto indCurr = getBatchTimeTotalIndex(dataFormat, e, t);
+                        lstmLayerCell(xSet->at(indCurr), Wx, Wr, b, hSet->at(indPrev), ctSet->at(e), Wp, params, hSet->at(indCurr), ctSet->at(e)); // rest time steps
+                        indPrev = indCurr;
+                    }
+
+                    if(hL)
+                        htSet->at(e)->assign(hSet->at(indPrev));     // assign last output to hL if it is not nullptr
+
+                    tensorAlongTimeBatchDims(*h, dataFormat, limit,sL, e,e+1).nullify();    // nullify for given e and time range [limit, sL)
+                }
+            }
+        }
+    }
+
+    delete xSet;
+    delete hSet;
+    delete htSet;
+    delete ctSet;
 }
 
 

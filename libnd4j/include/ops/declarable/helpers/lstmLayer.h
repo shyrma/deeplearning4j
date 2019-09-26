@@ -29,6 +29,12 @@ namespace ops     {
 namespace helpers {
 
 //////////////////////////////////////////////////////////////////////////
+void lstmLayerCell(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
+                   const NDArray* b, const NDArray* hI, const NDArray* cI, const NDArray* Wp,
+                   const std::vector<float>& params,
+                         NDArray* h, NDArray* c);
+
+//////////////////////////////////////////////////////////////////////////
 void lstmLayerTimeLoop(const NDArray* x, const NDArray* Wx, const NDArray* Wr,
                         const NDArray* b, const NDArray* seqLen, const NDArray* hI, const NDArray* cI, const NDArray* Wp,
                         const std::vector<float>& params,
@@ -82,21 +88,21 @@ static FORCEINLINE void applyActivation(NDArray& x, const int opId, const float 
 }
 
 //////////////////////////////////////////////////////////////////////////
-// static NDArray lstmLayertimeSubset(const NDArray& arr, const int t, const int dataFormat) {
+static FORCEINLINE NDArray tensorAlongTimeBatchDims(const NDArray& arr, const int dataFormat, const int t1, const int t2, const int b1, const int b2) {
 
-//     if(dataFormat == 0)
-//         return arr({t,t+1, 0,0, 0,0});   // TNS: shape [sL, bS, nIn]
+    if(dataFormat == 0 || dataFormat == 3)
+        return arr({t1,t2, b1,b2, 0,0});    // TNS: [sL, bS, nIn]
 
-//     if(dataFormat == 1)
-//         return arr({0,0, t,t+1, 0,0});   // NTS: shape [bS, sL, nIn]
+    if(dataFormat == 1)
+        return arr({b1,b2, t1,t2, 0,0});    // NTS: [bS, sL ,nIn]
 
-//     return arr({0,0, 0,0, t,t+1});       // NST: shape [bS, nIn, sL]
-// }
+    return arr({b1,b2, 0,0, t1,t2});        // NST: [bS, nIn, sL]
+}
 
 //////////////////////////////////////////////////////////////////////////
 static FORCEINLINE int getBatchTimeTotalIndex(const int dataFormat, const int b, const int t) {
 
-    if(dataFormat == 0)
+    if(dataFormat == 0 || dataFormat == 3)
         return t * b + b;   // TNS: shape [sL, bS, nIn]
 
     return b * t + t;       // NTS, NST: shape [bS, sL, nIn], [bS, nIn, sL]
