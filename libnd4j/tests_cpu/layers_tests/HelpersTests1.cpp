@@ -2359,7 +2359,7 @@ TEST_F(HelpersTests1, lstmLayerCell_1) {
     const float cellAct = 0;        // tanh activation for cell state
     const float cellAlpha = 0;      // alpha value for cell state activation, not required for tanh
     const float cellBeta = 0;       // beta value for cell state activation, not required for tanh
-    const float outAct = 0;         // sigmoid activation for output
+    const float outAct = 0;         // tanh activation for output
     const float outAlpha = 0;       // alpha value for output activation, not required for tanh
     const float outBeta = 0;        // beta value for output activation, not required for tanh
 
@@ -2411,7 +2411,7 @@ TEST_F(HelpersTests1, lstmLayerCell_2) {
     const float cellAct = 0;        // tanh activation for cell state
     const float cellAlpha = 0;      // alpha value for cell state activation, not required for tanh
     const float cellBeta = 0;       // beta value for cell state activation, not required for tanh
-    const float outAct = 0;         // sigmoid activation for output
+    const float outAct = 0;         // tanh activation for output
     const float outAlpha = 0;       // alpha value for output activation, not required for tanh
     const float outBeta = 0;        // beta value for output activation, not required for tanh
 
@@ -2462,7 +2462,7 @@ TEST_F(HelpersTests1, lstmLayerCell_3) {
     const float cellAct = 0;        // tanh activation for cell state
     const float cellAlpha = 0;      // alpha value for cell state activation, not required for tanh
     const float cellBeta = 0;       // beta value for cell state activation, not required for tanh
-    const float outAct = 0;         // sigmoid activation for output
+    const float outAct = 0;         // tanh activation for output
     const float outAlpha = 0;       // alpha value for output activation, not required for tanh
     const float outBeta = 0;        // beta value for output activation, not required for tanh
 
