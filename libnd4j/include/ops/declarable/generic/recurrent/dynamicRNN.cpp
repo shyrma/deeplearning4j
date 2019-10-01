@@ -15,7 +15,7 @@
  ******************************************************************************/
 
 //
-// @author Yurii Shyrma, created on 05.04.2018
+// @author Yurii Shyrma (iuriish@yahoo.com)
 //
 
 #include <ops/declarable/CustomOperations.h>

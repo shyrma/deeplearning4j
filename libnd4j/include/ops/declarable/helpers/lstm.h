@@ -15,7 +15,7 @@
  ******************************************************************************/
 
 //
-// @author Yurii Shyrma, created on 14.02.2018
+// @author Yurii Shyrma (iuriish@yahoo.com)
 //
 
 #ifndef LIBND4J_LSTM_H
